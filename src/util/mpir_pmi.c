@@ -840,7 +840,7 @@ static void free_pmi_keyvals(INFO_TYPE ** kv, int size, int *counts)
 static int parse_coord_file(const char *filename)
 {
     int mpi_errno = MPI_SUCCESS;
-    int i, j, rank;
+    int i, j, rank, coords_dims;
     FILE *coords_file;
 
     coords_file = fopen(filename, "r");
@@ -848,32 +848,39 @@ static int parse_coord_file(const char *filename)
                          "**filenoexist", "**filenoexist %s", filename);
 
     /* Skip the first line */
-    fscanf(coords_file, "%*[^\n]\n");
-    MPIR_Process.coords_dims = 0;
-    fscanf(coords_file, "%d:", &rank);
+    int fields_scanned = fscanf(coords_file, "%*[^\n]\n");
+    MPIR_ERR_CHKANDSTMT2(0 != fields_scanned, mpi_errno, MPI_ERR_FILE, goto fn_fail_read,
+                         "**read_file", "**read_file %s %s", filename, strerror(errno));
+    coords_dims = 0;
+    fields_scanned = fscanf(coords_file, "%d:", &rank);
+    MPIR_ERR_CHKANDSTMT2(1 != fields_scanned, mpi_errno, MPI_ERR_FILE, goto fn_fail_read,
+                         "**read_file", "**read_file %s %s", filename, strerror(errno));
     while (!feof(coords_file)) {
         int temp = 0;
         if (fscanf(coords_file, "%d", &temp) == 1)
-            ++MPIR_Process.coords_dims;
+            ++coords_dims;
         else
             break;
         if (fgetc(coords_file) == '\n')
             break;
     }
 
-    MPIR_Assert(MPIR_Process.coords_dims == 3);
+    MPIR_Assert(coords_dims == 3);
+    MPIR_Process.coords_dims = coords_dims;
     rewind(coords_file);
     /* Skip the first line */
-    fscanf(coords_file, "%*[^\n]\n");
+    fields_scanned = fscanf(coords_file, "%*[^\n]\n");
+    MPIR_ERR_CHKANDSTMT2(0 != fields_scanned, mpi_errno, MPI_ERR_FILE, goto fn_fail_read,
+                         "**read_file", "**read_file %s %s", filename, strerror(errno));
 
     if (MPIR_Process.coords == NULL) {
         MPIR_Process.coords =
-            MPL_malloc(MPIR_Process.coords_dims * sizeof(int) * MPIR_Process.size, MPL_MEM_COLL);
+            MPL_malloc(coords_dims * sizeof(int) * MPIR_Process.size, MPL_MEM_COLL);
     }
-    memset(MPIR_Process.coords, -1, MPIR_Process.coords_dims * sizeof(int) * MPIR_Process.size);
+    memset(MPIR_Process.coords, -1, coords_dims * sizeof(int) * MPIR_Process.size);
 
     for (i = 0; i < MPIR_Process.size; ++i) {
-        int fields_scanned = fscanf(coords_file, "%d:", &rank);
+        fields_scanned = fscanf(coords_file, "%d:", &rank);
         MPIR_ERR_CHKANDSTMT2(1 != fields_scanned, mpi_errno, MPI_ERR_FILE, goto fn_fail_read,
                              "**read_file", "**read_file %s %s", filename, strerror(errno));
         if (rank >= MPIR_Process.size) {
@@ -882,12 +889,11 @@ static int parse_coord_file(const char *filename)
                         rank, MPIR_Process.size);
             continue;
         }
-        for (j = 0; j < MPIR_Process.coords_dims; ++j) {
+        for (j = 0; j < coords_dims; ++j) {
             /* MPIR_Process.coords stores the coords in this order: port number, switch_id, group_id */
             fields_scanned =
                 fscanf(coords_file, "%d",
-                       &MPIR_Process.coords[rank * MPIR_Process.coords_dims +
-                                            MPIR_Process.coords_dims - 1 - j]);
+                       &MPIR_Process.coords[rank * coords_dims + coords_dims - 1 - j]);
             MPIR_ERR_CHKANDSTMT2(1 != fields_scanned, mpi_errno, MPI_ERR_FILE, goto fn_fail_read,
                                  "**read_file", "**read_file %s %s", filename, strerror(errno));
         }
