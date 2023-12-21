@@ -108,9 +108,13 @@ static int pmix_init(int *has_parent, int *rank, int *size, int *appnum)
             MPIR_Process.coords = NULL;
             break;
         }
-        MPIR_Assert(val->data.coord->dims <= INT_MAX);
-        MPIR_Process.coords_dims = (int) val->data.coord->dims;
-        MPIR_Assert(MPIR_Process.coords_dims == 3);
+        if (val->data.coord->dims == 3) {
+            MPIR_Process.coords_dims = (int) val->data.coord->dims;
+        }
+        else {
+            MPIR_Process.coords = NULL;
+            break;
+        }
 
         if (i == 0) {
             MPIR_Process.coords =
